@@ -25,7 +25,7 @@
       background: rgba(10, 18, 10, 0.8);
       border: 1px solid rgba(140, 220, 140, 0.45);
       border-radius: 10px;
-      min-width: 220px;
+      min-width: 240px;
       backdrop-filter: blur(3px);
       font-size: 14px;
       line-height: 1.35;
@@ -40,7 +40,7 @@
       right: 12px;
       bottom: 12px;
       z-index: 10;
-      max-width: 300px;
+      max-width: 320px;
       font-size: 12px;
       padding: 10px 12px;
       border-radius: 10px;
@@ -80,6 +80,24 @@
       background: rgba(255, 0, 0, 0.45);
     }
 
+    #level-banner {
+      position: fixed;
+      top: 18%;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 20px;
+      border-radius: 10px;
+      background: rgba(24, 76, 116, 0.82);
+      border: 1px solid rgba(120, 210, 255, 0.7);
+      color: #b7f0ff;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      z-index: 16;
+      opacity: 0;
+      transition: opacity 0.25s;
+      pointer-events: none;
+    }
+
     #panel {
       text-align: center;
       background: rgba(15, 20, 15, 0.92);
@@ -108,9 +126,13 @@
 <body>
   <div id="hud">
     <div>Vida: <strong id="health">100</strong></div>
+    <div>Maná: <strong id="mana">100</strong></div>
+    <div>Nivel: <strong id="level">1</strong></div>
+    <div>Racha: <strong id="combo">x1</strong></div>
     <div>Puntos: <strong id="score">0</strong></div>
     <div>Tiempo: <strong id="time">0.0</strong>s</div>
     <div>Enemigos vivos: <strong id="enemies">0</strong></div>
+    <div>Orbes: <strong id="orbs">0</strong></div>
   </div>
 
   <div id="controls">
@@ -118,13 +140,15 @@
     <div>WASD / Flechas: mover</div>
     <div>Mouse: apuntar</div>
     <div>Click Izq o Espacio: lanzar hechizo</div>
+    <div>Shift: dash arcano</div>
+    <div>Q: nova de meteoritos (35 maná)</div>
     <div>Esc: pausar / reanudar</div>
   </div>
 
   <div id="menu">
     <div id="panel">
       <h1>NyWyMy</h1>
-      <p>Sobrevive el mayor tiempo posible.</p>
+      <p>Sobrevive, sube de nivel y domina el bosque.</p>
       <button id="play">Jugar</button>
     </div>
   </div>
@@ -145,6 +169,7 @@
   </div>
 
   <div id="damage-flash"></div>
+  <div id="level-banner">¡Subiste de nivel!</div>
 
   <script type="module">
     import * as THREE from 'https://unpkg.com/three@0.161.0/build/three.module.js';
@@ -173,6 +198,10 @@
     dirLight.shadow.camera.top = 70;
     dirLight.shadow.camera.bottom = -70;
     scene.add(dirLight);
+
+    const moonLight = new THREE.PointLight(0x88aaff, 0, 120);
+    moonLight.position.set(0, 25, 0);
+    scene.add(moonLight);
 
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(220, 220),
@@ -211,7 +240,7 @@
     }
 
     function createWizard(color, accessories = {}) {
-      const { hasBook = false } = accessories;
+      const { elite = false } = accessories;
       const wizard = new THREE.Group();
       const body = new THREE.Mesh(
         new THREE.CylinderGeometry(0.9, 1.25, 3, 10),
@@ -222,7 +251,7 @@
 
       const head = new THREE.Mesh(
         new THREE.SphereGeometry(0.7, 12, 12),
-        new THREE.MeshStandardMaterial({ color: 0xf2d8be, roughness: 0.5 })
+        new THREE.MeshStandardMaterial({ color: elite ? 0xffc7c7 : 0xf2d8be, roughness: 0.5 })
       );
       head.position.y = 3.6;
       head.castShadow = true;
@@ -234,62 +263,55 @@
       hat.position.y = 4.7;
       hat.castShadow = true;
 
-      if (hasBook) {
-        const hand = new THREE.Mesh(
-          new THREE.SphereGeometry(0.16, 10, 10),
-          new THREE.MeshStandardMaterial({ color: 0xf2d8be, roughness: 0.5 })
+      wizard.add(body, head, hat);
+
+      if (elite) {
+        const aura = new THREE.Mesh(
+          new THREE.TorusGeometry(1.5, 0.08, 8, 28),
+          new THREE.MeshStandardMaterial({ color: 0xff2e2e, emissive: 0x951212, emissiveIntensity: 0.9 })
         );
-        hand.position.set(-1.3, 1.55, 0.36);
-        hand.castShadow = true;
-
-        const book = new THREE.Group();
-        const coverMaterial = new THREE.MeshStandardMaterial({ color: 0x7f2f1f, roughness: 0.7 });
-        const pageMaterial = new THREE.MeshStandardMaterial({ color: 0xf2e3c5, roughness: 0.92 });
-
-        const leftCover = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.5, 0.74), coverMaterial);
-        const rightCover = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.5, 0.74), coverMaterial);
-        leftCover.position.x = -0.16;
-        rightCover.position.x = 0.16;
-
-        const leftPages = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.44, 0.68), pageMaterial);
-        const rightPages = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.44, 0.68), pageMaterial);
-        leftPages.position.x = -0.08;
-        rightPages.position.x = 0.08;
-
-        const spine = new THREE.Mesh(
-          new THREE.BoxGeometry(0.05, 0.5, 0.74),
-          new THREE.MeshStandardMaterial({ color: 0x5f1d14, roughness: 0.75 })
-        );
-
-        leftCover.castShadow = true;
-        rightCover.castShadow = true;
-        leftPages.castShadow = true;
-        rightPages.castShadow = true;
-        spine.castShadow = true;
-
-        book.add(leftCover, rightCover, leftPages, rightPages, spine);
-        book.position.set(-1.58, 1.48, 0.45);
-        book.rotation.set(0.3, 0.55, 0.25);
-
-        wizard.add(hand, book);
+        aura.rotation.x = Math.PI / 2;
+        aura.position.y = 0.2;
+        wizard.add(aura);
       }
 
-      wizard.add(body, head, hat);
       return wizard;
     }
 
+    function createOrb(type) {
+      const color = type === 'mana' ? 0x4db8ff : type === 'haste' ? 0xffef7d : 0x7dff95;
+      const orb = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(0.55, 1),
+        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6, metalness: 0.1, roughness: 0.25 })
+      );
+      orb.castShadow = true;
+      return orb;
+    }
+
     const player = {
-      mesh: createWizard(0xffd541, { hasBook: true }),
+      mesh: createWizard(0xffd541),
       health: 100,
+      maxHealth: 100,
+      mana: 100,
+      maxMana: 100,
       speed: 16,
       cooldown: 0,
       fireRate: 0.33,
-      kills: 0
+      kills: 0,
+      xp: 0,
+      level: 1,
+      combo: 1,
+      comboTimer: 0,
+      dashCooldown: 0,
+      hasteTimer: 0,
+      orbCount: 0
     };
     scene.add(player.mesh);
 
     const enemies = [];
     const spells = [];
+    const orbs = [];
+    const shockwaves = [];
     const enemySpawnTimer = { value: 0 };
     const keys = {};
     const mouse = new THREE.Vector2();
@@ -297,9 +319,13 @@
     const aimPoint = new THREE.Vector3(1, 0, 0);
 
     const healthEl = document.querySelector('#health');
+    const manaEl = document.querySelector('#mana');
+    const levelEl = document.querySelector('#level');
+    const comboEl = document.querySelector('#combo');
     const scoreEl = document.querySelector('#score');
     const timeEl = document.querySelector('#time');
     const enemiesEl = document.querySelector('#enemies');
+    const orbsEl = document.querySelector('#orbs');
     const gameOverEl = document.querySelector('#game-over');
     const pauseOverlayEl = document.querySelector('#pause-overlay');
     const menuEl = document.querySelector('#menu');
@@ -307,12 +333,14 @@
     const restartBtn = document.querySelector('#restart');
     const playBtn = document.querySelector('#play');
     const damageFlashEl = document.querySelector('#damage-flash');
+    const levelBannerEl = document.querySelector('#level-banner');
 
     let elapsed = 0;
     let gameRunning = false;
     let paused = false;
     let gameOver = false;
     let damageFlash = 0;
+    let levelBannerTimer = 0;
 
     function clampToWorld(obj) {
       obj.position.x = THREE.MathUtils.clamp(obj.position.x, -worldSize, worldSize);
@@ -320,11 +348,14 @@
     }
 
     function spawnEnemy() {
+      const eliteChance = Math.min(0.35, elapsed / 160);
+      const elite = Math.random() < eliteChance;
       const enemy = {
-        mesh: createWizard(0x49bb50),
-        health: 38,
-        speed: 6 + Math.random() * 2.8,
-        cooldown: 1 + Math.random() * 1.2
+        mesh: createWizard(elite ? 0xaa1f2b : 0x49bb50, { elite }),
+        elite,
+        health: elite ? 95 : 38,
+        speed: (elite ? 7.2 : 6) + Math.random() * 2.8,
+        cooldown: elite ? 0.65 + Math.random() * 0.7 : 1 + Math.random() * 1.2
       };
       const edge = Math.floor(Math.random() * 4);
       const dist = 80 + Math.random() * 14;
@@ -336,13 +367,19 @@
       enemies.push(enemy);
     }
 
-    function castSpell(origin, direction, owner) {
+    function castSpell(origin, direction, owner, options = {}) {
       const isPlayer = owner === 'player';
+      const size = options.size ?? (isPlayer ? 0.32 : 0.28);
+      const speed = options.speed ?? (isPlayer ? 35 : 24);
+      const damage = options.damage ?? (isPlayer ? 19 : 11);
+      const color = options.color ?? (isPlayer ? 0xffe070 : 0x7cff86);
+      const emissive = options.emissive ?? (isPlayer ? 0xaa7c20 : 0x1b8f2c);
+
       const spellMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(isPlayer ? 0.32 : 0.28, 10, 10),
+        new THREE.SphereGeometry(size, 10, 10),
         new THREE.MeshStandardMaterial({
-          color: isPlayer ? 0xffe070 : 0x7cff86,
-          emissive: isPlayer ? 0xaa7c20 : 0x1b8f2c,
+          color,
+          emissive,
           emissiveIntensity: 0.7
         })
       );
@@ -351,21 +388,92 @@
       scene.add(spellMesh);
       spells.push({
         mesh: spellMesh,
-        velocity: direction.clone().normalize().multiplyScalar(isPlayer ? 35 : 24),
-        damage: isPlayer ? 19 : 11,
+        velocity: direction.clone().normalize().multiplyScalar(speed),
+        damage,
         owner,
-        life: 2.6
+        life: options.life ?? 2.6
       });
     }
 
+    function addXp(amount) {
+      player.xp += amount;
+      let nextLevelXp = 80 + (player.level - 1) * 45;
+      while (player.xp >= nextLevelXp) {
+        player.xp -= nextLevelXp;
+        player.level += 1;
+        player.maxMana += 6;
+        player.maxHealth += 4;
+        player.health = Math.min(player.maxHealth, player.health + 12);
+        player.mana = Math.min(player.maxMana, player.mana + 22);
+        player.fireRate = Math.max(0.15, player.fireRate - 0.012);
+        levelBannerTimer = 1.7;
+        nextLevelXp = 80 + (player.level - 1) * 45;
+      }
+    }
+
+    function spawnOrb(position) {
+      const roll = Math.random();
+      const type = roll < 0.45 ? 'heal' : roll < 0.82 ? 'mana' : 'haste';
+      const mesh = createOrb(type);
+      mesh.position.set(position.x + (Math.random() - 0.5) * 1.6, 1.1, position.z + (Math.random() - 0.5) * 1.6);
+      scene.add(mesh);
+      orbs.push({ mesh, type, life: 12 + Math.random() * 8, bob: Math.random() * Math.PI * 2 });
+    }
+
     function shootPlayerSpell() {
-      if (!gameRunning || paused || player.cooldown > 0) return;
+      if (!gameRunning || paused || player.cooldown > 0 || player.mana < 4) return;
       player.cooldown = player.fireRate;
+      player.mana = Math.max(0, player.mana - 4);
       const origin = player.mesh.position.clone().add(new THREE.Vector3(0, 2.5, 0));
       const dir = aimPoint.clone().sub(player.mesh.position);
       dir.y = 0;
       if (dir.lengthSq() < 0.001) dir.set(1, 0, 0);
-      castSpell(origin, dir, 'player');
+      castSpell(origin, dir, 'player', { damage: 17 + player.level * 0.7 });
+    }
+
+    function castMeteorNova() {
+      if (!gameRunning || paused || player.mana < 35) return;
+      player.mana -= 35;
+      const center = player.mesh.position.clone().add(new THREE.Vector3(0, 1.4, 0));
+      const boltCount = 14;
+      for (let i = 0; i < boltCount; i++) {
+        const ang = (i / boltCount) * Math.PI * 2;
+        const dir = new THREE.Vector3(Math.cos(ang), 0, Math.sin(ang));
+        castSpell(center, dir, 'player', {
+          size: 0.46,
+          speed: 20,
+          damage: 21 + player.level * 1.4,
+          color: 0xff914d,
+          emissive: 0xa3491d,
+          life: 1.2
+        });
+      }
+      const wave = new THREE.Mesh(
+        new THREE.RingGeometry(1.3, 1.8, 32),
+        new THREE.MeshBasicMaterial({ color: 0xffa45e, side: THREE.DoubleSide, transparent: true, opacity: 0.8 })
+      );
+      wave.rotation.x = -Math.PI / 2;
+      wave.position.copy(player.mesh.position).setY(0.12);
+      scene.add(wave);
+      shockwaves.push({ mesh: wave, life: 0.5, growth: 22 });
+    }
+
+    function dash() {
+      if (!gameRunning || paused || player.dashCooldown > 0 || player.mana < 14) return;
+      player.mana -= 14;
+      player.dashCooldown = 1.3;
+      const dir = new THREE.Vector3();
+      if (keys['w'] || keys['arrowup']) dir.z -= 1;
+      if (keys['s'] || keys['arrowdown']) dir.z += 1;
+      if (keys['a'] || keys['arrowleft']) dir.x -= 1;
+      if (keys['d'] || keys['arrowright']) dir.x += 1;
+      if (dir.lengthSq() < 0.001) {
+        dir.copy(aimPoint).sub(player.mesh.position);
+        dir.y = 0;
+      }
+      dir.normalize();
+      player.mesh.position.addScaledVector(dir, 8.5);
+      clampToWorld(player.mesh);
     }
 
     function updateAimFromMouse() {
@@ -385,6 +493,14 @@
       if (e.code === 'Space') {
         e.preventDefault();
         shootPlayerSpell();
+      }
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        e.preventDefault();
+        dash();
+      }
+      if (e.code === 'KeyQ') {
+        e.preventDefault();
+        castMeteorNova();
       }
       if (e.code === 'Escape') {
         e.preventDefault();
@@ -426,12 +542,12 @@
       gameOver = true;
       paused = false;
       pauseOverlayEl.style.display = 'none';
-      finalScoreEl.textContent = `Sobreviviste ${elapsed.toFixed(1)}s y lograste ${Math.floor(calcScore())} puntos con ${player.kills} bajas.`;
+      finalScoreEl.textContent = `Sobreviviste ${elapsed.toFixed(1)}s, subiste al nivel ${player.level} y lograste ${Math.floor(calcScore())} puntos con ${player.kills} bajas.`;
       gameOverEl.style.display = 'flex';
     }
 
     function calcScore() {
-      return player.kills * 120 + elapsed * 10;
+      return player.kills * 120 * player.combo + elapsed * 10 + player.level * 90 + player.orbCount * 25;
     }
 
     function horizontalDistance(a, b) {
@@ -440,9 +556,13 @@
 
     function updateHUD() {
       healthEl.textContent = Math.max(0, Math.round(player.health));
+      manaEl.textContent = Math.round(player.mana);
+      levelEl.textContent = player.level;
+      comboEl.textContent = `x${player.combo.toFixed(1)}`;
       scoreEl.textContent = Math.floor(calcScore());
       timeEl.textContent = elapsed.toFixed(1);
       enemiesEl.textContent = enemies.length;
+      orbsEl.textContent = player.orbCount;
     }
 
     const clock = new THREE.Clock();
@@ -457,8 +577,24 @@
         damageFlashEl.style.opacity = damageFlash.toFixed(2);
       }
 
+      if (levelBannerTimer > 0) {
+        levelBannerTimer = Math.max(0, levelBannerTimer - dt);
+        levelBannerEl.style.opacity = levelBannerTimer > 0 ? '1' : '0';
+      }
+
       if (gameRunning && !paused) {
         elapsed += dt;
+        const dayWave = (Math.sin(elapsed * 0.1) + 1) * 0.5;
+        hemi.intensity = 0.35 + dayWave * 0.5;
+        dirLight.intensity = 0.45 + dayWave * 0.9;
+        moonLight.intensity = 0.45 + (1 - dayWave) * 0.8;
+
+        player.mana = Math.min(player.maxMana, player.mana + dt * (7.5 + player.level * 0.2));
+        player.cooldown -= dt;
+        player.dashCooldown -= dt;
+        player.comboTimer -= dt;
+        if (player.comboTimer <= 0) player.combo = Math.max(1, player.combo - dt * 0.8);
+        player.hasteTimer -= dt;
 
         const move = new THREE.Vector3();
         if (keys['w'] || keys['arrowup']) move.z -= 1;
@@ -466,7 +602,8 @@
         if (keys['a'] || keys['arrowleft']) move.x -= 1;
         if (keys['d'] || keys['arrowright']) move.x += 1;
         if (move.lengthSq() > 0) {
-          move.normalize().multiplyScalar(player.speed * dt);
+          const hasteBoost = player.hasteTimer > 0 ? 1.32 : 1;
+          move.normalize().multiplyScalar(player.speed * hasteBoost * dt);
           player.mesh.position.add(move);
           clampToWorld(player.mesh);
         }
@@ -475,17 +612,15 @@
         lookDir.y = 0;
         if (lookDir.lengthSq() > 0.001) player.mesh.rotation.y = Math.atan2(lookDir.x, lookDir.z);
 
-        player.cooldown -= dt;
-
         const camTarget = player.mesh.position.clone();
         camera.position.lerp(new THREE.Vector3(camTarget.x, 28, camTarget.z + 30), 0.08);
         camera.lookAt(camTarget.x, 0, camTarget.z - 2);
 
         enemySpawnTimer.value -= dt;
-        const targetEnemyCount = 4 + Math.floor(elapsed / 18);
-        if (enemySpawnTimer.value <= 0 && enemies.length < Math.min(20, targetEnemyCount)) {
+        const targetEnemyCount = 4 + Math.floor(elapsed / 15) + Math.floor(player.level / 2);
+        if (enemySpawnTimer.value <= 0 && enemies.length < Math.min(28, targetEnemyCount)) {
           spawnEnemy();
-          enemySpawnTimer.value = Math.max(0.35, 1.4 - elapsed * 0.01);
+          enemySpawnTimer.value = Math.max(0.25, 1.35 - elapsed * 0.011);
         }
 
         for (let i = enemies.length - 1; i >= 0; i--) {
@@ -502,14 +637,24 @@
           if (enemy.cooldown <= 0 && dist < 42) {
             const origin = enemy.mesh.position.clone().add(new THREE.Vector3(0, 2.2, 0));
             const spread = new THREE.Vector3((Math.random() - 0.5) * 0.12, 0, (Math.random() - 0.5) * 0.12);
-            castSpell(origin, toPlayer.add(spread), 'enemy');
-            enemy.cooldown = 0.85 + Math.random() * 0.85;
+            castSpell(origin, toPlayer.add(spread), 'enemy', {
+              damage: enemy.elite ? 17 : 11,
+              size: enemy.elite ? 0.35 : 0.28,
+              color: enemy.elite ? 0xff6666 : 0x7cff86,
+              emissive: enemy.elite ? 0xaa2222 : 0x1b8f2c
+            });
+            enemy.cooldown = enemy.elite ? 0.52 + Math.random() * 0.45 : 0.85 + Math.random() * 0.85;
           }
 
           if (enemy.health <= 0) {
+            const enemyPos = enemy.mesh.position.clone();
             scene.remove(enemy.mesh);
             enemies.splice(i, 1);
             player.kills += 1;
+            addXp(enemy.elite ? 28 : 11);
+            player.combo = Math.min(4, player.combo + (enemy.elite ? 0.42 : 0.18));
+            player.comboTimer = 2.3;
+            if (Math.random() < (enemy.elite ? 0.9 : 0.34)) spawnOrb(enemyPos);
           }
         }
 
@@ -523,7 +668,7 @@
           if (!removeSpell && spell.owner === 'player') {
             for (const enemy of enemies) {
               if (horizontalDistance(spell.mesh.position, enemy.mesh.position) < 1.5) {
-                enemy.health -= spell.damage;
+                enemy.health -= spell.damage * player.combo;
                 removeSpell = true;
                 break;
               }
@@ -533,15 +678,47 @@
               player.health -= spell.damage;
               damageFlash = 0.85;
               removeSpell = true;
-              if (player.health <= 0) {
-                endGame();
-              }
+              if (player.health <= 0) endGame();
             }
           }
 
           if (removeSpell) {
             scene.remove(spell.mesh);
             spells.splice(i, 1);
+          }
+        }
+
+        for (let i = orbs.length - 1; i >= 0; i--) {
+          const orb = orbs[i];
+          orb.life -= dt;
+          orb.bob += dt * 2.8;
+          orb.mesh.position.y = 1.1 + Math.sin(orb.bob) * 0.25;
+          orb.mesh.rotation.y += dt * 1.9;
+
+          if (horizontalDistance(orb.mesh.position, player.mesh.position) < 1.7) {
+            if (orb.type === 'heal') player.health = Math.min(player.maxHealth, player.health + 22);
+            if (orb.type === 'mana') player.mana = Math.min(player.maxMana, player.mana + 38);
+            if (orb.type === 'haste') player.hasteTimer = 5;
+            player.orbCount += 1;
+            scene.remove(orb.mesh);
+            orbs.splice(i, 1);
+            continue;
+          }
+
+          if (orb.life <= 0) {
+            scene.remove(orb.mesh);
+            orbs.splice(i, 1);
+          }
+        }
+
+        for (let i = shockwaves.length - 1; i >= 0; i--) {
+          const wave = shockwaves[i];
+          wave.life -= dt;
+          wave.mesh.scale.addScalar(dt * wave.growth);
+          wave.mesh.material.opacity = Math.max(0, wave.life * 1.4);
+          if (wave.life <= 0) {
+            scene.remove(wave.mesh);
+            shockwaves.splice(i, 1);
           }
         }
 
