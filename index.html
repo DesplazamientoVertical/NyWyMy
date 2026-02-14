@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mago Amarillo: Bosque de Hechizos</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #101510;
+    }
+
+    #hud {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 10;
+      padding: 10px 14px;
+      background: rgba(10, 18, 10, 0.8);
+      border: 1px solid rgba(140, 220, 140, 0.45);
+      border-radius: 10px;
+      min-width: 220px;
+      backdrop-filter: blur(3px);
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    #hud strong {
+      color: #ffe37b;
+    }
+
+    #controls {
+      position: fixed;
+      right: 12px;
+      bottom: 12px;
+      z-index: 10;
+      max-width: 300px;
+      font-size: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(10, 18, 10, 0.82);
+      border: 1px solid rgba(140, 220, 140, 0.45);
+    }
+
+    #game-over {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      background: rgba(0, 0, 0, 0.68);
+    }
+
+    #panel {
+      text-align: center;
+      background: rgba(15, 20, 15, 0.92);
+      border: 1px solid rgba(240, 90, 90, 0.65);
+      border-radius: 14px;
+      padding: 22px 28px;
+      min-width: 300px;
+    }
+
+    button {
+      margin-top: 14px;
+      background: #1f9b42;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #29b953;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div>Vida: <strong id="health">100</strong></div>
+    <div>Puntos: <strong id="score">0</strong></div>
+    <div>Tiempo: <strong id="time">0.0</strong>s</div>
+    <div>Enemigos vivos: <strong id="enemies">0</strong></div>
+  </div>
+
+  <div id="controls">
+    <div><strong>Controles</strong></div>
+    <div>WASD / Flechas: mover</div>
+    <div>Mouse: apuntar</div>
+    <div>Click Izq o Espacio: lanzar hechizo</div>
+  </div>
+
+  <div id="game-over">
+    <div id="panel">
+      <h2>¡Has caído, mago amarillo!</h2>
+      <p id="final-score"></p>
+      <button id="restart">Jugar de nuevo</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.161.0/build/three.module.js';
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x243627, 35, 170);
+    scene.background = new THREE.Color(0x1c2e1f);
+
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 350);
+    camera.position.set(0, 28, 30);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    const hemi = new THREE.HemisphereLight(0xdde9ff, 0x1f2f1f, 0.7);
+    scene.add(hemi);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.05);
+    dirLight.position.set(12, 28, 18);
+    dirLight.castShadow = true;
+    dirLight.shadow.camera.left = -70;
+    dirLight.shadow.camera.right = 70;
+    dirLight.shadow.camera.top = 70;
+    dirLight.shadow.camera.bottom = -70;
+    scene.add(dirLight);
+
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(220, 220),
+      new THREE.MeshStandardMaterial({ color: 0x304f2f, roughness: 1 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    const worldSize = 95;
+
+    function createTree(x, z) {
+      const tree = new THREE.Group();
+      const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.5, 0.7, 4, 7),
+        new THREE.MeshStandardMaterial({ color: 0x5a3e25, roughness: 0.9 })
+      );
+      trunk.position.y = 2;
+      trunk.castShadow = true;
+      const leaves = new THREE.Mesh(
+        new THREE.ConeGeometry(2.8, 6, 8),
+        new THREE.MeshStandardMaterial({ color: 0x356d35, roughness: 1 })
+      );
+      leaves.position.y = 6.2;
+      leaves.castShadow = true;
+      tree.add(trunk, leaves);
+      tree.position.set(x, 0, z);
+      scene.add(tree);
+    }
+
+    for (let i = 0; i < 240; i++) {
+      const x = (Math.random() - 0.5) * 200;
+      const z = (Math.random() - 0.5) * 200;
+      if (Math.hypot(x, z) < 18) continue;
+      createTree(x, z);
+    }
+
+    function createWizard(color) {
+      const wizard = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.9, 1.25, 3, 10),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.6 })
+      );
+      body.position.y = 1.6;
+      body.castShadow = true;
+
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.7, 12, 12),
+        new THREE.MeshStandardMaterial({ color: 0xf2d8be, roughness: 0.5 })
+      );
+      head.position.y = 3.6;
+      head.castShadow = true;
+
+      const hat = new THREE.Mesh(
+        new THREE.ConeGeometry(0.95, 1.9, 10),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.65 })
+      );
+      hat.position.y = 4.7;
+      hat.castShadow = true;
+
+      wizard.add(body, head, hat);
+      return wizard;
+    }
+
+    const player = {
+      mesh: createWizard(0xffd541),
+      health: 100,
+      speed: 16,
+      cooldown: 0,
+      fireRate: 0.33,
+      kills: 0
+    };
+    scene.add(player.mesh);
+
+    const enemies = [];
+    const spells = [];
+    const enemySpawnTimer = { value: 0 };
+    const keys = {};
+    const mouse = new THREE.Vector2();
+    const raycaster = new THREE.Raycaster();
+    const aimPoint = new THREE.Vector3(1, 0, 0);
+
+    const healthEl = document.querySelector('#health');
+    const scoreEl = document.querySelector('#score');
+    const timeEl = document.querySelector('#time');
+    const enemiesEl = document.querySelector('#enemies');
+    const gameOverEl = document.querySelector('#game-over');
+    const finalScoreEl = document.querySelector('#final-score');
+    const restartBtn = document.querySelector('#restart');
+
+    let elapsed = 0;
+    let gameRunning = true;
+
+    function clampToWorld(obj) {
+      obj.position.x = THREE.MathUtils.clamp(obj.position.x, -worldSize, worldSize);
+      obj.position.z = THREE.MathUtils.clamp(obj.position.z, -worldSize, worldSize);
+    }
+
+    function spawnEnemy() {
+      const enemy = {
+        mesh: createWizard(0x49bb50),
+        health: 38,
+        speed: 6 + Math.random() * 2.8,
+        cooldown: 1 + Math.random() * 1.2
+      };
+      const edge = Math.floor(Math.random() * 4);
+      const dist = 80 + Math.random() * 14;
+      if (edge === 0) enemy.mesh.position.set(-dist, 0, (Math.random() - 0.5) * 160);
+      if (edge === 1) enemy.mesh.position.set(dist, 0, (Math.random() - 0.5) * 160);
+      if (edge === 2) enemy.mesh.position.set((Math.random() - 0.5) * 160, 0, -dist);
+      if (edge === 3) enemy.mesh.position.set((Math.random() - 0.5) * 160, 0, dist);
+      scene.add(enemy.mesh);
+      enemies.push(enemy);
+    }
+
+    function castSpell(origin, direction, owner) {
+      const isPlayer = owner === 'player';
+      const spellMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(isPlayer ? 0.32 : 0.28, 10, 10),
+        new THREE.MeshStandardMaterial({
+          color: isPlayer ? 0xffe070 : 0x7cff86,
+          emissive: isPlayer ? 0xaa7c20 : 0x1b8f2c,
+          emissiveIntensity: 0.7
+        })
+      );
+      spellMesh.castShadow = true;
+      spellMesh.position.copy(origin);
+      scene.add(spellMesh);
+      spells.push({
+        mesh: spellMesh,
+        velocity: direction.clone().normalize().multiplyScalar(isPlayer ? 35 : 24),
+        damage: isPlayer ? 19 : 11,
+        owner,
+        life: 2.6
+      });
+    }
+
+    function shootPlayerSpell() {
+      if (!gameRunning || player.cooldown > 0) return;
+      player.cooldown = player.fireRate;
+      const origin = player.mesh.position.clone().add(new THREE.Vector3(0, 2.5, 0));
+      const dir = aimPoint.clone().sub(player.mesh.position);
+      dir.y = 0;
+      if (dir.lengthSq() < 0.001) dir.set(1, 0, 0);
+      castSpell(origin, dir, 'player');
+    }
+
+    function updateAimFromMouse() {
+      raycaster.setFromCamera(mouse, camera);
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      raycaster.ray.intersectPlane(plane, aimPoint);
+    }
+
+    window.addEventListener('keydown', (e) => {
+      keys[e.key.toLowerCase()] = true;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        shootPlayerSpell();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keys[e.key.toLowerCase()] = false;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      updateAimFromMouse();
+    });
+
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0) shootPlayerSpell();
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    restartBtn.addEventListener('click', () => {
+      location.reload();
+    });
+
+    function endGame() {
+      gameRunning = false;
+      finalScoreEl.textContent = `Sobreviviste ${elapsed.toFixed(1)}s y lograste ${Math.floor(calcScore())} puntos con ${player.kills} bajas.`;
+      gameOverEl.style.display = 'flex';
+    }
+
+    function calcScore() {
+      return player.kills * 120 + elapsed * 10;
+    }
+
+    function updateHUD() {
+      healthEl.textContent = Math.max(0, Math.round(player.health));
+      scoreEl.textContent = Math.floor(calcScore());
+      timeEl.textContent = elapsed.toFixed(1);
+      enemiesEl.textContent = enemies.length;
+    }
+
+    const clock = new THREE.Clock();
+    updateAimFromMouse();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(0.033, clock.getDelta());
+      if (gameRunning) {
+        elapsed += dt;
+
+        const move = new THREE.Vector3();
+        if (keys['w'] || keys['arrowup']) move.z -= 1;
+        if (keys['s'] || keys['arrowdown']) move.z += 1;
+        if (keys['a'] || keys['arrowleft']) move.x -= 1;
+        if (keys['d'] || keys['arrowright']) move.x += 1;
+        if (move.lengthSq() > 0) {
+          move.normalize().multiplyScalar(player.speed * dt);
+          player.mesh.position.add(move);
+          clampToWorld(player.mesh);
+        }
+
+        const lookDir = aimPoint.clone().sub(player.mesh.position);
+        lookDir.y = 0;
+        if (lookDir.lengthSq() > 0.001) player.mesh.rotation.y = Math.atan2(lookDir.x, lookDir.z);
+
+        player.cooldown -= dt;
+
+        const camTarget = player.mesh.position.clone();
+        camera.position.lerp(new THREE.Vector3(camTarget.x, 28, camTarget.z + 30), 0.08);
+        camera.lookAt(camTarget.x, 0, camTarget.z - 2);
+
+        enemySpawnTimer.value -= dt;
+        const targetEnemyCount = 4 + Math.floor(elapsed / 18);
+        if (enemySpawnTimer.value <= 0 && enemies.length < Math.min(20, targetEnemyCount)) {
+          spawnEnemy();
+          enemySpawnTimer.value = Math.max(0.35, 1.4 - elapsed * 0.01);
+        }
+
+        for (let i = enemies.length - 1; i >= 0; i--) {
+          const enemy = enemies[i];
+          const toPlayer = player.mesh.position.clone().sub(enemy.mesh.position);
+          const dist = toPlayer.length();
+          if (dist > 0.01) {
+            const dir = toPlayer.normalize();
+            enemy.mesh.position.addScaledVector(dir, enemy.speed * dt * (dist > 9 ? 1 : 0.45));
+            enemy.mesh.rotation.y = Math.atan2(dir.x, dir.z);
+          }
+
+          enemy.cooldown -= dt;
+          if (enemy.cooldown <= 0 && dist < 42) {
+            const origin = enemy.mesh.position.clone().add(new THREE.Vector3(0, 2.2, 0));
+            const spread = new THREE.Vector3((Math.random() - 0.5) * 0.12, 0, (Math.random() - 0.5) * 0.12);
+            castSpell(origin, toPlayer.add(spread), 'enemy');
+            enemy.cooldown = 0.85 + Math.random() * 0.85;
+          }
+
+          if (enemy.health <= 0) {
+            scene.remove(enemy.mesh);
+            enemies.splice(i, 1);
+            player.kills += 1;
+          }
+        }
+
+        const playerHitCenter = player.mesh.position.clone().add(new THREE.Vector3(0, 2.1, 0));
+
+        for (let i = spells.length - 1; i >= 0; i--) {
+          const spell = spells[i];
+          spell.life -= dt;
+          spell.mesh.position.addScaledVector(spell.velocity, dt);
+
+          let removeSpell = spell.life <= 0 || Math.abs(spell.mesh.position.x) > 120 || Math.abs(spell.mesh.position.z) > 120;
+
+          if (!removeSpell && spell.owner === 'player') {
+            for (const enemy of enemies) {
+              const enemyHitCenter = enemy.mesh.position.clone().add(new THREE.Vector3(0, 2.1, 0));
+              if (spell.mesh.position.distanceTo(enemyHitCenter) < 1.85) {
+                enemy.health -= spell.damage;
+                removeSpell = true;
+                break;
+              }
+            }
+          } else if (!removeSpell) {
+            if (spell.mesh.position.distanceTo(playerHitCenter) < 1.8) {
+              player.health -= spell.damage;
+              removeSpell = true;
+              if (player.health <= 0) {
+                endGame();
+              }
+            }
+          }
+
+          if (removeSpell) {
+            scene.remove(spell.mesh);
+            spells.splice(i, 1);
+          }
+        }
+
+        updateHUD();
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
+</body>
+</html>
