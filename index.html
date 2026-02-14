@@ -328,6 +328,10 @@
       return player.kills * 120 + elapsed * 10;
     }
 
+    function horizontalDistance(a, b) {
+      return Math.hypot(a.x - b.x, a.z - b.z);
+    }
+
     function updateHUD() {
       healthEl.textContent = Math.max(0, Math.round(player.health));
       scoreEl.textContent = Math.floor(calcScore());
@@ -406,14 +410,14 @@
 
           if (!removeSpell && spell.owner === 'player') {
             for (const enemy of enemies) {
-              if (spell.mesh.position.distanceTo(enemy.mesh.position) < 1.5) {
+              if (horizontalDistance(spell.mesh.position, enemy.mesh.position) < 1.5) {
                 enemy.health -= spell.damage;
                 removeSpell = true;
                 break;
               }
             }
           } else if (!removeSpell) {
-            if (spell.mesh.position.distanceTo(player.mesh.position) < 1.45) {
+            if (horizontalDistance(spell.mesh.position, player.mesh.position) < 1.45) {
               player.health -= spell.damage;
               removeSpell = true;
               if (player.health <= 0) {
