@@ -128,6 +128,19 @@
       background: #29b953;
     }
 
+    .toggle-row {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .toggle-row input {
+      accent-color: #2bc95b;
+    }
+
     .rainbow-option {
       margin-top: 8px;
       font-weight: 700;
@@ -180,7 +193,10 @@
     <div id="panel">
       <h1>NyWyMy</h1>
       <p>Sobrevive, sube de nivel y domina el bosque.</p>
-      <p class="rainbow-option">L se D</p>
+      <label class="toggle-row" for="rainbow-toggle">
+        <input type="checkbox" id="rainbow-toggle" />
+        Activar modo L se D
+      </label>
       <button id="play">Jugar</button>
     </div>
   </div>
@@ -365,6 +381,7 @@
     const finalScoreEl = document.querySelector('#final-score');
     const restartBtn = document.querySelector('#restart');
     const playBtn = document.querySelector('#play');
+    const rainbowToggleEl = document.querySelector('#rainbow-toggle');
     const damageFlashEl = document.querySelector('#damage-flash');
     const levelBannerEl = document.querySelector('#level-banner');
 
@@ -374,6 +391,11 @@
     let gameOver = false;
     let damageFlash = 0;
     let levelBannerTimer = 0;
+    let rainbowModeEnabled = false;
+
+    function updateRainbowMode() {
+      if (!rainbowModeEnabled) document.body.style.setProperty('--rainbow-hue', '0deg');
+    }
 
     function clampToWorld(obj) {
       obj.position.x = THREE.MathUtils.clamp(obj.position.x, -worldSize, worldSize);
@@ -570,6 +592,11 @@
       menuEl.style.display = 'none';
     });
 
+    rainbowToggleEl.addEventListener('change', (event) => {
+      rainbowModeEnabled = event.target.checked;
+      updateRainbowMode();
+    });
+
     function endGame() {
       gameRunning = false;
       gameOver = true;
@@ -604,7 +631,9 @@
     function animate() {
       requestAnimationFrame(animate);
       const dt = Math.min(0.033, clock.getDelta());
-      document.body.style.setProperty('--rainbow-hue', `${(elapsed * 45) % 360}deg`);
+      if (rainbowModeEnabled) {
+        document.body.style.setProperty('--rainbow-hue', `${(elapsed * 45) % 360}deg`);
+      }
 
       if (damageFlash > 0) {
         damageFlash = Math.max(0, damageFlash - dt * 2.8);
