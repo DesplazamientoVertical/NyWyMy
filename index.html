@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Mago Amarillo: Bosque de Hechizos</title>
+  <title>NyWyMy</title>
   <style>
     :root {
       color-scheme: dark;
@@ -48,7 +48,9 @@
       border: 1px solid rgba(140, 220, 140, 0.45);
     }
 
-    #game-over {
+    #game-over,
+    #menu,
+    #pause-overlay {
       position: fixed;
       inset: 0;
       display: none;
@@ -56,6 +58,26 @@
       justify-content: center;
       z-index: 20;
       background: rgba(0, 0, 0, 0.68);
+    }
+
+    #menu {
+      display: flex;
+      z-index: 25;
+      background: radial-gradient(circle at center, rgba(32, 72, 35, 0.88), rgba(0, 0, 0, 0.9));
+    }
+
+    #pause-overlay {
+      z-index: 22;
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    #damage-flash {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 18;
+      opacity: 0;
+      background: rgba(255, 0, 0, 0.45);
     }
 
     #panel {
@@ -96,6 +118,22 @@
     <div>WASD / Flechas: mover</div>
     <div>Mouse: apuntar</div>
     <div>Click Izq o Espacio: lanzar hechizo</div>
+    <div>Esc: pausar / reanudar</div>
+  </div>
+
+  <div id="menu">
+    <div id="panel">
+      <h1>NyWyMy</h1>
+      <p>Sobrevive el mayor tiempo posible.</p>
+      <button id="play">Jugar</button>
+    </div>
+  </div>
+
+  <div id="pause-overlay">
+    <div id="panel">
+      <h2>Juego en pausa</h2>
+      <p>Pulsa Esc para continuar.</p>
+    </div>
   </div>
 
   <div id="game-over">
@@ -105,6 +143,8 @@
       <button id="restart">Jugar de nuevo</button>
     </div>
   </div>
+
+  <div id="damage-flash"></div>
 
   <script type="module">
     import * as THREE from 'https://unpkg.com/three@0.161.0/build/three.module.js';
@@ -170,7 +210,45 @@
       createTree(x, z);
     }
 
-    function createWizard(color) {
+    function createFace(mood) {
+      const face = new THREE.Group();
+      const featureMaterial = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.35 });
+
+      const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), featureMaterial);
+      const rightEye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), featureMaterial);
+      leftEye.position.set(-0.18, 0.1, 0.62);
+      rightEye.position.set(0.18, 0.1, 0.62);
+
+      face.add(leftEye, rightEye);
+
+      if (mood === 'sad') {
+        const mouth = new THREE.Mesh(
+          new THREE.TorusGeometry(0.18, 0.03, 6, 16, Math.PI),
+          featureMaterial
+        );
+        mouth.rotation.x = Math.PI / 2;
+        mouth.rotation.z = Math.PI;
+        mouth.position.set(0, -0.16, 0.62);
+        face.add(mouth);
+      } else if (mood === 'angry') {
+        const leftBrow = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.04, 0.04), featureMaterial);
+        const rightBrow = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.04, 0.04), featureMaterial);
+        leftBrow.position.set(-0.18, 0.23, 0.62);
+        rightBrow.position.set(0.18, 0.23, 0.62);
+        leftBrow.rotation.z = -0.5;
+        rightBrow.rotation.z = 0.5;
+
+        const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.035, 0.035), featureMaterial);
+        mouth.position.set(0, -0.14, 0.62);
+        mouth.rotation.z = -0.1;
+
+        face.add(leftBrow, rightBrow, mouth);
+      }
+
+      return face;
+    }
+
+    function createWizard(color, mood = 'neutral') {
       const wizard = new THREE.Group();
       const body = new THREE.Mesh(
         new THREE.CylinderGeometry(0.9, 1.25, 3, 10),
@@ -193,12 +271,15 @@
       hat.position.y = 4.7;
       hat.castShadow = true;
 
-      wizard.add(body, head, hat);
+      const face = createFace(mood);
+      face.position.y = 3.6;
+
+      wizard.add(body, head, hat, face);
       return wizard;
     }
 
     const player = {
-      mesh: createWizard(0xffd541),
+      mesh: createWizard(0xffd541, 'sad'),
       health: 100,
       speed: 16,
       cooldown: 0,
@@ -220,11 +301,18 @@
     const timeEl = document.querySelector('#time');
     const enemiesEl = document.querySelector('#enemies');
     const gameOverEl = document.querySelector('#game-over');
+    const pauseOverlayEl = document.querySelector('#pause-overlay');
+    const menuEl = document.querySelector('#menu');
     const finalScoreEl = document.querySelector('#final-score');
     const restartBtn = document.querySelector('#restart');
+    const playBtn = document.querySelector('#play');
+    const damageFlashEl = document.querySelector('#damage-flash');
 
     let elapsed = 0;
-    let gameRunning = true;
+    let gameRunning = false;
+    let paused = false;
+    let gameOver = false;
+    let damageFlash = 0;
 
     function clampToWorld(obj) {
       obj.position.x = THREE.MathUtils.clamp(obj.position.x, -worldSize, worldSize);
@@ -233,7 +321,7 @@
 
     function spawnEnemy() {
       const enemy = {
-        mesh: createWizard(0x49bb50),
+        mesh: createWizard(0x49bb50, 'angry'),
         health: 38,
         speed: 6 + Math.random() * 2.8,
         cooldown: 1 + Math.random() * 1.2
@@ -271,7 +359,7 @@
     }
 
     function shootPlayerSpell() {
-      if (!gameRunning || player.cooldown > 0) return;
+      if (!gameRunning || paused || player.cooldown > 0) return;
       player.cooldown = player.fireRate;
       const origin = player.mesh.position.clone().add(new THREE.Vector3(0, 2.5, 0));
       const dir = aimPoint.clone().sub(player.mesh.position);
@@ -286,11 +374,21 @@
       raycaster.ray.intersectPlane(plane, aimPoint);
     }
 
+    function togglePause() {
+      if (!gameRunning || gameOver) return;
+      paused = !paused;
+      pauseOverlayEl.style.display = paused ? 'flex' : 'none';
+    }
+
     window.addEventListener('keydown', (e) => {
       keys[e.key.toLowerCase()] = true;
       if (e.code === 'Space') {
         e.preventDefault();
         shootPlayerSpell();
+      }
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        togglePause();
       }
     });
 
@@ -318,8 +416,16 @@
       location.reload();
     });
 
+    playBtn.addEventListener('click', () => {
+      gameRunning = true;
+      menuEl.style.display = 'none';
+    });
+
     function endGame() {
       gameRunning = false;
+      gameOver = true;
+      paused = false;
+      pauseOverlayEl.style.display = 'none';
       finalScoreEl.textContent = `Sobreviviste ${elapsed.toFixed(1)}s y lograste ${Math.floor(calcScore())} puntos con ${player.kills} bajas.`;
       gameOverEl.style.display = 'flex';
     }
@@ -345,7 +451,13 @@
     function animate() {
       requestAnimationFrame(animate);
       const dt = Math.min(0.033, clock.getDelta());
-      if (gameRunning) {
+
+      if (damageFlash > 0) {
+        damageFlash = Math.max(0, damageFlash - dt * 2.8);
+        damageFlashEl.style.opacity = damageFlash.toFixed(2);
+      }
+
+      if (gameRunning && !paused) {
         elapsed += dt;
 
         const move = new THREE.Vector3();
@@ -419,6 +531,7 @@
           } else if (!removeSpell) {
             if (horizontalDistance(spell.mesh.position, player.mesh.position) < 1.45) {
               player.health -= spell.damage;
+              damageFlash = 0.85;
               removeSpell = true;
               if (player.health <= 0) {
                 endGame();
