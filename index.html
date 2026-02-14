@@ -53,6 +53,92 @@
       border: 1px solid rgba(140, 220, 140, 0.45);
     }
 
+    #lsd-toggle-btn {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      z-index: 24;
+      margin-top: 0;
+      padding: 8px 11px;
+      font-size: 12px;
+      border-radius: 999px;
+      background: rgba(31, 155, 66, 0.75);
+      border: 1px solid rgba(161, 255, 183, 0.65);
+      backdrop-filter: blur(2px);
+      opacity: 0.8;
+    }
+
+    #lsd-toggle-btn.active {
+      background: rgba(203, 89, 255, 0.9);
+      box-shadow: 0 0 12px rgba(198, 115, 255, 0.65);
+      opacity: 1;
+    }
+
+    #mobile-controls {
+      position: fixed;
+      inset: auto 10px 10px 10px;
+      z-index: 12;
+      display: none;
+      justify-content: space-between;
+      align-items: flex-end;
+      pointer-events: none;
+    }
+
+    #mobile-joystick {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: rgba(22, 30, 24, 0.62);
+      border: 1px solid rgba(140, 220, 140, 0.45);
+      position: relative;
+      pointer-events: auto;
+      touch-action: none;
+    }
+
+    #mobile-stick {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: rgba(102, 248, 132, 0.72);
+      border: 1px solid rgba(198, 255, 210, 0.8);
+      position: absolute;
+      left: 37px;
+      top: 37px;
+    }
+
+    #mobile-actions {
+      display: grid;
+      gap: 8px;
+      pointer-events: auto;
+    }
+
+    .mobile-btn {
+      margin-top: 0;
+      width: 86px;
+      padding: 9px 10px;
+      font-size: 12px;
+      background: rgba(44, 98, 231, 0.8);
+      border: 1px solid rgba(167, 196, 255, 0.72);
+      touch-action: manipulation;
+    }
+
+    .mobile-btn.secondary {
+      background: rgba(167, 91, 222, 0.82);
+    }
+
+    @media (max-width: 900px) {
+      #controls {
+        left: 12px;
+        right: 12px;
+        max-width: none;
+      }
+
+      #hud {
+        min-width: 210px;
+        font-size: 13px;
+      }
+    }
+
     #game-over,
     #menu,
     #pause-overlay {
@@ -193,11 +279,20 @@
     <div id="panel">
       <h1>NyWyMy</h1>
       <p>Sobrevive, sube de nivel y domina el bosque.</p>
-      <label class="toggle-row" for="rainbow-toggle">
-        <input type="checkbox" id="rainbow-toggle" />
-        Activar modo L se D
-      </label>
       <button id="play">Jugar</button>
+    </div>
+  </div>
+
+  <button id="lsd-toggle-btn" type="button">L se D: OFF</button>
+
+  <div id="mobile-controls">
+    <div id="mobile-joystick" aria-label="Joystick móvil">
+      <div id="mobile-stick"></div>
+    </div>
+    <div id="mobile-actions">
+      <button class="mobile-btn" id="mobile-shoot" type="button">Hechizo</button>
+      <button class="mobile-btn secondary" id="mobile-dash" type="button">Dash</button>
+      <button class="mobile-btn secondary" id="mobile-nova" type="button">Nova</button>
     </div>
   </div>
 
@@ -381,9 +476,16 @@
     const finalScoreEl = document.querySelector('#final-score');
     const restartBtn = document.querySelector('#restart');
     const playBtn = document.querySelector('#play');
-    const rainbowToggleEl = document.querySelector('#rainbow-toggle');
+    const lsdToggleBtn = document.querySelector('#lsd-toggle-btn');
     const damageFlashEl = document.querySelector('#damage-flash');
     const levelBannerEl = document.querySelector('#level-banner');
+    const controlsEl = document.querySelector('#controls');
+    const mobileControlsEl = document.querySelector('#mobile-controls');
+    const mobileJoystickEl = document.querySelector('#mobile-joystick');
+    const mobileStickEl = document.querySelector('#mobile-stick');
+    const mobileShootBtn = document.querySelector('#mobile-shoot');
+    const mobileDashBtn = document.querySelector('#mobile-dash');
+    const mobileNovaBtn = document.querySelector('#mobile-nova');
 
     let elapsed = 0;
     let gameRunning = false;
@@ -392,9 +494,40 @@
     let damageFlash = 0;
     let levelBannerTimer = 0;
     let rainbowModeEnabled = false;
+    const isMobileDevice = window.matchMedia('(pointer: coarse)').matches || /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+    const mobileMove = new THREE.Vector2(0, 0);
+    const joystickState = { active: false, touchId: null };
+
+    controlsEl.insertAdjacentHTML('beforeend', `<div><strong>Dispositivo:</strong> ${isMobileDevice ? 'móvil' : 'PC'}</div>`);
+    if (isMobileDevice) mobileControlsEl.style.display = 'flex';
 
     function updateRainbowMode() {
       if (!rainbowModeEnabled) document.body.style.setProperty('--rainbow-hue', '0deg');
+      lsdToggleBtn.classList.toggle('active', rainbowModeEnabled);
+      lsdToggleBtn.textContent = `L se D: ${rainbowModeEnabled ? 'ON' : 'OFF'}`;
+    }
+
+    function updateMobileStick() {
+      mobileStickEl.style.left = `${37 + mobileMove.x * 30}px`;
+      mobileStickEl.style.top = `${37 - mobileMove.y * 30}px`;
+    }
+
+    function setMobileDirectionFromTouch(clientX, clientY) {
+      const rect = mobileJoystickEl.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = clientX - cx;
+      const dy = clientY - cy;
+      const max = rect.width * 0.37;
+      const len = Math.hypot(dx, dy);
+      const factor = len > max ? max / len : 1;
+      mobileMove.set((dx * factor) / max, (-dy * factor) / max);
+      updateMobileStick();
+    }
+
+    function resetMobileDirection() {
+      mobileMove.set(0, 0);
+      updateMobileStick();
     }
 
     function clampToWorld(obj) {
@@ -568,14 +701,66 @@
     });
 
     window.addEventListener('mousemove', (e) => {
+      if (isMobileDevice) return;
       mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
       mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
       updateAimFromMouse();
     });
 
     window.addEventListener('mousedown', (e) => {
+      if (isMobileDevice) return;
       if (e.button === 0) shootPlayerSpell();
     });
+
+    lsdToggleBtn.addEventListener('click', () => {
+      rainbowModeEnabled = !rainbowModeEnabled;
+      updateRainbowMode();
+    });
+
+    mobileJoystickEl.addEventListener('touchstart', (event) => {
+      const touch = event.changedTouches[0];
+      joystickState.active = true;
+      joystickState.touchId = touch.identifier;
+      setMobileDirectionFromTouch(touch.clientX, touch.clientY);
+      event.preventDefault();
+    }, { passive: false });
+
+    mobileJoystickEl.addEventListener('touchmove', (event) => {
+      if (!joystickState.active) return;
+      for (const touch of event.changedTouches) {
+        if (touch.identifier === joystickState.touchId) {
+          setMobileDirectionFromTouch(touch.clientX, touch.clientY);
+          event.preventDefault();
+          break;
+        }
+      }
+    }, { passive: false });
+
+    mobileJoystickEl.addEventListener('touchend', (event) => {
+      for (const touch of event.changedTouches) {
+        if (touch.identifier === joystickState.touchId) {
+          joystickState.active = false;
+          joystickState.touchId = null;
+          resetMobileDirection();
+          break;
+        }
+      }
+    });
+
+    mobileShootBtn.addEventListener('touchstart', (event) => {
+      shootPlayerSpell();
+      event.preventDefault();
+    }, { passive: false });
+
+    mobileDashBtn.addEventListener('touchstart', (event) => {
+      dash();
+      event.preventDefault();
+    }, { passive: false });
+
+    mobileNovaBtn.addEventListener('touchstart', (event) => {
+      castMeteorNova();
+      event.preventDefault();
+    }, { passive: false });
 
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -590,11 +775,6 @@
     playBtn.addEventListener('click', () => {
       gameRunning = true;
       menuEl.style.display = 'none';
-    });
-
-    rainbowToggleEl.addEventListener('change', (event) => {
-      rainbowModeEnabled = event.target.checked;
-      updateRainbowMode();
     });
 
     function endGame() {
@@ -627,6 +807,7 @@
 
     const clock = new THREE.Clock();
     updateAimFromMouse();
+    updateRainbowMode();
 
     function animate() {
       requestAnimationFrame(animate);
@@ -664,6 +845,22 @@
         if (keys['s'] || keys['arrowdown']) move.z += 1;
         if (keys['a'] || keys['arrowleft']) move.x -= 1;
         if (keys['d'] || keys['arrowright']) move.x += 1;
+        if (isMobileDevice) {
+          move.x += mobileMove.x;
+          move.z -= mobileMove.y;
+          if (enemies.length > 0) {
+            let nearest = enemies[0];
+            let nearestDist = horizontalDistance(player.mesh.position, enemies[0].mesh.position);
+            for (let i = 1; i < enemies.length; i++) {
+              const dist = horizontalDistance(player.mesh.position, enemies[i].mesh.position);
+              if (dist < nearestDist) {
+                nearest = enemies[i];
+                nearestDist = dist;
+              }
+            }
+            aimPoint.copy(nearest.mesh.position);
+          }
+        }
         if (move.lengthSq() > 0) {
           const hasteBoost = player.hasteTimer > 0 ? 1.32 : 1;
           move.normalize().multiplyScalar(player.speed * hasteBoost * dt);
